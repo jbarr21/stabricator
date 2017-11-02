@@ -85,15 +85,49 @@ class StatusMenuController: NSObject, NSWindowDelegate, NSUserNotificationCenter
         refreshDiffs()
     }
 
-    private func refreshDiffs() {
+    fileprivate func diffParamList(diffs: [Diff], paramName: String) -> String {
+        var revIndex = -1
+        return diffs.map({ (diff: Diff) -> String in
+            revIndex += 1
+            return "\(paramName)%5B\(revIndex)%5D=\(diff.id)"
+        }).joined(separator: "&")
+    }
+
+    fileprivate func refreshDiffs() {
         refreshMenuItem.image = nil
         if let phab = self.phab {
-            phab.fetchActiveDiffs() { response in
-                self.statusItem.image = self.knife
-                self.refreshMenuItem.image = nil
-                self.refreshUi(diffs: response.result.data)
-                
-                self.scheduleRefresh()
+            phab.fetchProjects(userPhid: Defaults.instance.user!.phid) { projectArrayResponse in
+                var projectMap: [String: Project] = [:]
+                projectArrayResponse.result.data.forEach { project in projectMap[project.phid] = project }
+                self.defaults.projects = ProjectMap(projects: projectMap)
+
+                phab.fetchActiveDiffs() { response in
+                    let revisionIds = self.diffParamList(diffs: response.result.data, paramName: "revisionid")
+                    phab.fetchActiveDiffReviewers(revisionIds: revisionIds) { reviewerMapResponse in
+                        let ids = self.diffParamList(diffs: response.result.data, paramName: "ids")
+                        phab.fetchActiveDiffStatuses(revisionIds: ids) { statusArrayResponse in
+                            let diffs: [Diff] = response.result.data.map { diff in
+                                let diffStatus: DiffStatus? = statusArrayResponse.result.first { diffStatus in
+                                    diffStatus.phid == diff.phid
+                                }
+                                return Diff(
+                                        id: diff.id,
+                                        phid: diff.phid,
+                                        fields: diff.fields,
+                                        attachments: diff.attachments,
+                                        uberReviewers: reviewerMapResponse.result[diff.phid],
+                                        uberStatus: diffStatus?.statusName ?? "unknown"
+                                )
+                            }
+
+                            self.statusItem.image = self.knife
+                            self.refreshMenuItem.image = nil
+                            self.refreshUi(diffs: diffs)
+
+                            self.scheduleRefresh()
+                        }
+                    }
+                }
             }
         }
     }
@@ -114,9 +148,10 @@ class StatusMenuController: NSObject, NSWindowDelegate, NSUserNotificationCenter
             statusMenu.removeItem(at: INSERTION_INDEX)
         }
 
+        let projects = Defaults.instance.projects!
         var diffsToNotify: [Diff] = []
         var newActionableDiffIds: Set<String> = []
-        let sortedDiffs = sortDiffs(userPhid: user!.phid, diffs: diffs)
+        let sortedDiffs = sortDiffs(userPhid: user!.phid, projects: projects, diffs: diffs)
         for category in categories {
             let diffs = sortedDiffs[category]!
             let header = NSMenuItem(title: category.title, action: nil, keyEquivalent: "")
@@ -135,7 +170,7 @@ class StatusMenuController: NSObject, NSWindowDelegate, NSUserNotificationCenter
 
             for diff in diffs {
                 // check to see if we should notify for this diff
-                if diff.isActionable(userPhid: user!.phid) {
+                if diff.isActionable(userPhid: user!.phid, projects: projects) {
                     // keep track of all actionable diffs for this iteration
                     newActionableDiffIds.insert(diff.phid)
                     // we'll send an alert for diffs that are now actionable that weren't last time
@@ -169,7 +204,7 @@ class StatusMenuController: NSObject, NSWindowDelegate, NSUserNotificationCenter
         )
         menuItem.target = self
         menuItem.representedObject = diff
-        menuItem.image = NSImage(named: NSImage.Name(rawValue: diff.fields.status.value))
+        menuItem.image = NSImage(named: NSImage.Name(rawValue: diff.status()))
         return menuItem
     }
     
@@ -191,7 +226,7 @@ class StatusMenuController: NSObject, NSWindowDelegate, NSUserNotificationCenter
         for diff in diffs {
             let notification = NSUserNotification()
             notification.title = diff.fields.title
-            notification.subtitle = diff.fields.status.name
+            notification.subtitle = diff.status()
             notification.identifier = "\(diff.id)"
             if (defaults.playSound) {
                 notification.soundName = NSUserNotificationDefaultSoundName

@@ -13,6 +13,9 @@ class Phabricator {
     let API_URL: URL
     let API_TOKEN: String
     let PATH_DIFFS_SEARCH = "differential.revision.search"
+    let PATH_DIFFS_QUERY = "differential.query"
+    let PATH_PROJECTS = "project.search"
+    let PATH_REVIEWERS = "differential.uber_getreviewers"
     let PATH_USER_SELF = "user.whoami"
     let errorHandler: (Error) -> Void
     let jsonDecoder = JSONDecoder()
@@ -38,10 +41,28 @@ class Phabricator {
         execute(request: request, type: Response<User>.self, success: success)
     }
 
+    func fetchProjects(userPhid: String, success: @escaping (ProjectArrayResponse) -> Void) {
+        var request = getRequest(url: API_URL.appendingPathComponent(PATH_PROJECTS))
+        request.httpBody = "api.token=\(API_TOKEN)&constraints[members][0]=\(userPhid)".data(using: .utf8)
+        execute(request: request, type: ProjectArrayResponse.self, success: success)
+    }
+
     func fetchActiveDiffs(success: @escaping (DiffArrayResponse) -> Void) {
         var request = getRequest(url: API_URL.appendingPathComponent(PATH_DIFFS_SEARCH))
         request.httpBody = "api.token=\(API_TOKEN)&queryKey=active&attachments[reviewers]=true".data(using: .utf8)
         execute(request: request, type: DiffArrayResponse.self, success: success)
+    }
+
+    func fetchActiveDiffReviewers(revisionIds: String, success: @escaping (ReviewerMapResponse) -> Void) {
+        var request = getRequest(url: API_URL.appendingPathComponent(PATH_REVIEWERS))
+        request.httpBody = "api.token=\(API_TOKEN)&\(revisionIds)".data(using: .utf8)
+        execute(request: request, type: ReviewerMapResponse.self, success: success)
+    }
+
+    func fetchActiveDiffStatuses(revisionIds: String, success: @escaping (DiffStatusArrayResponse) -> Void) {
+        var request = getRequest(url: API_URL.appendingPathComponent(PATH_DIFFS_QUERY))
+        request.httpBody = "api.token=\(API_TOKEN)&\(revisionIds)".data(using: .utf8)
+        execute(request: request, type: DiffStatusArrayResponse.self, success: success)
     }
     
     func getRequest(url: URL) -> URLRequest {

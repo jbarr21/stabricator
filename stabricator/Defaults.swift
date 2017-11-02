@@ -15,6 +15,7 @@ class Defaults {
     private let KEY_PHAB_URL = "phabUrl"
     private let KEY_API_TOKEN = "apiToken"
     private let KEY_USER = "user"
+    private let KEY_PROJECT_MAP = "projectMap"
     private let KEY_REFRESH_INTERVAL = "refreshInterval"
     private let KEY_AUTO_START = "autoStart"
     private let KEY_NOTIFY = "notify"
@@ -76,6 +77,23 @@ class Defaults {
             let encoder = PropertyListEncoder()
             if let encoded = try? encoder.encode(value) {
                 defaults.set(encoded, forKey: KEY_USER)
+            }
+        }
+    }
+
+    var projects: ProjectMap? {
+        get {
+            let decoder = PropertyListDecoder()
+            if let projectMapData = defaults.data(forKey: KEY_PROJECT_MAP) {
+                let projectMap = try? decoder.decode(ProjectMap.self, from: projectMapData)
+                return projectMap
+            }
+            return nil
+        }
+        set(value) {
+            let encoder = PropertyListEncoder()
+            if let encoded = try? encoder.encode(value) {
+                defaults.set(encoded, forKey: KEY_PROJECT_MAP)
             }
         }
     }

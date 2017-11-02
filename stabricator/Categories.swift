@@ -14,7 +14,7 @@ struct Category : Hashable {
     // message to show when the diff list is empty
     let emptyMessage: String
     // decides if the diff is of this category
-    let isOfType: (String, Diff) -> Bool
+    let isOfType: (String, ProjectMap, Diff) -> Bool
 
     var hashValue: Int {
         return title.hashValue
@@ -27,51 +27,52 @@ struct Category : Hashable {
 
 let categories: [Category] = [
 
-    Category(title: "Must Review", emptyMessage: "No revisions are blocked on your review.") { userPhid, diff in
+    Category(title: "Must Review", emptyMessage: "No revisions are blocked on your review.") { userPhid, projects, diff in
         diff.isStatus(Status.NEEDS_REVIEW) &&
             !diff.isAuthoredBy(userPhid) &&
-            diff.isBlockingReviewer(userPhid)
+            diff.isBlockingReviewer(userPhid, projects)
     },
 
     // TODO: get empty message
-    Category(title: "Ready to Review", emptyMessage: "No revisions are ready to review.") { userPhid, diff in
+    Category(title: "Ready to Review", emptyMessage: "No revisions are ready to review.") { userPhid, projects, diff in
         diff.isStatus(Status.NEEDS_REVIEW) &&
             !diff.isAuthoredBy(userPhid) &&
-            !diff.isAcceptedBy(userPhid)
+            !diff.isAcceptedBy(userPhid, projects) &&
+            !diff.isBlockingReviewer(userPhid, projects)
     },
     
-    Category(title: "Ready to Land", emptyMessage: "No revisions are ready to land.") { userPhid, diff in
+    Category(title: "Ready to Land", emptyMessage: "No revisions are ready to land.") { userPhid, _, diff in
         diff.isStatus(Status.ACCEPTED) &&
             diff.isAuthoredBy(userPhid)
     },
     
-    Category(title: "Ready to Update", emptyMessage: "None of your revisions are ready to update.") { userPhid, diff in
+    Category(title: "Ready to Update", emptyMessage: "None of your revisions are ready to update.") { userPhid, _, diff in
         diff.isStatus(Status.NEEDS_REVISION, Status.CHANGES_PLANNED) &&
             diff.isAuthoredBy(userPhid)
     },
 
-    Category(title: "Drafts", emptyMessage: "You have no draft revisions.") { _, diff in
+    Category(title: "Drafts", emptyMessage: "You have no draft revisions.") { _, _, diff in
         diff.isStatus(Status.DRAFT)
     },
     
-    Category(title: "Waiting on Review", emptyMessage: "None of your revisions are waiting on review.") { userPhid, diff in
+    Category(title: "Waiting on Review", emptyMessage: "None of your revisions are waiting on review.") { userPhid, _, diff in
         diff.isStatus(Status.NEEDS_REVIEW) &&
             diff.isAuthoredBy(userPhid)
     },
     
-    Category(title: "Waiting on Authors", emptyMessage: "No revisions are waiting on authors.") { userPhid, diff in
+    Category(title: "Waiting on Authors", emptyMessage: "No revisions are waiting on authors.") { userPhid, _, diff in
         diff.isStatus(Status.ACCEPTED, Status.NEEDS_REVISION, Status.CHANGES_PLANNED) &&
             !diff.isAuthoredBy(userPhid)
     },
 
-    Category(title: "Waiting on Other Reviewers", emptyMessage: "No revisions are waiting for other reviewers.") { userPhid, diff in
+    Category(title: "Waiting on Other Reviewers", emptyMessage: "No revisions are waiting for other reviewers.") { userPhid, projects, diff in
         diff.isStatus(Status.NEEDS_REVIEW) &&
             !diff.isAuthoredBy(userPhid) &&
-            diff.isAcceptedBy(userPhid)
+            diff.isAcceptedBy(userPhid, projects)
     },
 ]
 
-func sortDiffs(userPhid: String, diffs: [Diff]) -> Dictionary<Category, [Diff]> {
+func sortDiffs(userPhid: String, projects: ProjectMap, diffs: [Diff]) -> Dictionary<Category, [Diff]> {
     var sorted = [Category: [Diff]]()
 
     for diff in diffs {
@@ -83,14 +84,14 @@ func sortDiffs(userPhid: String, diffs: [Diff]) -> Dictionary<Category, [Diff]> 
                 sorted[category] = [Diff]()
             }
             
-            if category.isOfType(userPhid, diff) {
+            if category.isOfType(userPhid, projects, diff) {
                 sorted[category]!.append(diff)
                 claimed = true
             }
         }
 
         if !claimed {
-            print("No category claimed: \(diff.fields.title)")
+            print("No category claimed: \(diff.id) \(diff.fields.title)")
         }
     }
     

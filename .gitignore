@@ -30,3 +30,6 @@ xcuserdata/
 
 # Cocoapods
 Pods/
+
+# AppCode
+.idea/
